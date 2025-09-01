@@ -167,7 +167,6 @@ def construct_reel_properties(reel_data, average_views):
         "Дата референса": {"date": {"start": created_at.isoformat()}},
         "Референс": {"url": link},
         "Автор": {"rich_text": [{"text": {"content": username}}]},
-        "Источник": {"select": {"name": "INSTA"}},
         "Название": {"title": [{"text": {"content": title}}]},
         "Просмотры": {"number": play_count},
         "Лайки": {"number": like_count},
