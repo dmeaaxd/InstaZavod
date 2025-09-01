@@ -229,7 +229,7 @@ def update_notion_properties(page_id, stage, status):
         raise Exception(f"Error updating Notion page properties: {response.json()}")
 
 
-def add_notion_blocks(page_id, headers_text, transcribe):
+def add_notion_blocks(page_id, unique_text, headers_text, transcribe):
     url = f"https://api.notion.com/v1/blocks/{page_id}/children"
 
     data = {
@@ -257,6 +257,34 @@ def add_notion_blocks(page_id, headers_text, transcribe):
                             "type": "text",
                             "text": {
                                 "content": transcribe
+                            }
+                        }
+                    ]
+                }
+            },
+            {
+                "object": "block",
+                "type": "heading_3",
+                "heading_3": {
+                    "rich_text": [
+                        {
+                            "type": "text",
+                            "text": {
+                                "content": "Новый сценарий:"
+                            }
+                        }
+                    ]
+                }
+            },
+            {
+                "object": "block",
+                "type": "paragraph",
+                "paragraph": {
+                    "rich_text": [
+                        {
+                            "type": "text",
+                            "text": {
+                                "content": unique_text
                             }
                         }
                     ]
