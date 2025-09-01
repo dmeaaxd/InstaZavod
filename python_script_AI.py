@@ -190,7 +190,7 @@ def translate_text_with_openai(text):
 
 
 # Добавление транскрибации и уникализированного текста в Notion
-def update_notion_properties(page_id, stage, status, new_scenario):
+def update_notion_properties(page_id, stage, status):
     url = f"https://api.notion.com/v1/pages/{page_id}"
 
     current_date = datetime.now().strftime("%Y-%m-%d")
@@ -217,15 +217,6 @@ def update_notion_properties(page_id, stage, status, new_scenario):
                     "status": {
                         "name": status
                     }
-                },
-                "Готовый сценарий": {
-                    "rich_text": [
-                        {
-                            "text": {
-                                "content": new_scenario
-                            }
-                        }
-                    ]
                 }
             }
         }
