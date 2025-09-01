@@ -1,9 +1,10 @@
+import os
+import traceback
 from datetime import datetime, timedelta
 
 import dotenv
 import pytz
 import requests
-import os
 
 dotenv.load_dotenv()
 
@@ -12,8 +13,8 @@ NOTION_TOKEN = os.getenv("NOTION_TOKEN")
 NOTION_DONORS_DB_ID = os.getenv("NOTION_DONORS_DB_ID")
 NOTION_REELS_DB_ID = os.getenv("NOTION_REELS_DB_ID")
 RAPIDAPI_KEY = os.getenv("RAPID_API_KEY")
-DAYS_TO_FETCH = 90  # Количество дней для сбора Reels
-MIN_DAYS_OLD = 5  # Минимальный возраст Reels для расчета среднего числа просмотров
+DAYS_TO_FETCH = 30  # Количество дней для сбора Reels
+MIN_DAYS_OLD = 3  # Минимальный возраст Reels для расчета среднего числа просмотров
 
 # Заголовки для запросов к Notion API
 notion_headers = {
@@ -26,30 +27,45 @@ notion_headers = {
 # Функция для получения списка доноров из Notion
 def get_donors_from_notion():
     url = f"https://api.notion.com/v1/databases/{NOTION_DONORS_DB_ID}/query"
-    response = requests.post(url, headers=notion_headers)
-    data = response.json()
+    payload = {}
     donors = []
-    for result in data['results']:
-        try:
-            properties = result['properties']
-            username = properties['username']['title'][0]['text']['content']
-            donor_id = result['id']
-            donors.append({'username': username, 'donor_id': donor_id})
-        except:
-            pass
+
+    while True:
+        response = requests.post(url, headers=notion_headers, json=payload)
+        if response.status_code != 200:
+            print(f"Ошибка запроса: {response.status_code}, {response.text}")
+            break
+
+        data = response.json()
+        for result in data.get('results', []):
+            try:
+                properties = result['properties']
+                username = properties['username']['title'][0]['text']['content']
+                donor_id = result['id']
+                donors.append({'username': username, 'donor_id': donor_id})
+            except Exception:
+                print(traceback.format_exc())
+
+        # Проверяем, есть ли ещё страницы
+        if data.get("has_more"):
+            payload = {"start_cursor": data["next_cursor"]}
+        else:
+            break
+
     return donors
 
 
 # Функция для получения Reels от доноров
 def get_reels_from_donor(username):
-    url = "https://instagram-scraper-api2.p.rapidapi.com/v1.2/reels"
+    url = "https://instagram-social-api.p.rapidapi.com/v1/reels"
     headers = {
         "X-RapidAPI-Key": RAPIDAPI_KEY,
-        "X-RapidAPI-Host": "instagram-scraper-api2.p.rapidapi.com"
+        "X-RapidAPI-Host": "instagram-social-api.p.rapidapi.com"
     }
     reels = []
     pagination_token = None
     threshold_date = datetime.now() - timedelta(days=DAYS_TO_FETCH)
+    check_pin = False
     while True:
         querystring = {
             "username_or_id_or_url": username,
@@ -62,11 +78,20 @@ def get_reels_from_donor(username):
             for item in items:
                 try:
                     created_at = datetime.fromtimestamp(item.get('caption', {}).get('created_at'))
+
                     if created_at < threshold_date:
-                        return reels
+                        check_pin = True
+                        continue
+                    else:
+                        check_pin = False
+
                     reels.append(item)
                 except Exception as e:
                     pass
+
+            if check_pin:
+                return reels
+
             pagination_token = data.get("pagination_token")
             if not pagination_token:
                 break
@@ -142,6 +167,7 @@ def construct_reel_properties(reel_data, average_views):
         "Дата референса": {"date": {"start": created_at.isoformat()}},
         "Референс": {"url": link},
         "Автор": {"rich_text": [{"text": {"content": username}}]},
+        "Источник": {"select": {"name": "INSTA"}},
         "Название": {"title": [{"text": {"content": title}}]},
         "Просмотры": {"number": play_count},
         "Лайки": {"number": like_count},
@@ -160,15 +186,18 @@ def update_donor_info(donor, average_views):
     donor_id = donor['donor_id']
 
     # Получение данных из Instagram
-    url = f"https://instagram-scraper-api2.p.rapidapi.com/v1/info?username_or_id_or_url={username}"
+    url = f"https://instagram-social-api.p.rapidapi.com/v1/info?username_or_id_or_url={username}"
     headers_instagram = {
         "X-RapidAPI-Key": RAPIDAPI_KEY,
-        "X-RapidAPI-Host": "instagram-scraper-api2.p.rapidapi.com"
+        "X-RapidAPI-Host": "instagram-social-api.p.rapidapi.com"
     }
     response = requests.get(url, headers=headers_instagram)
     if response.status_code == 200:
         data = response.json()
+
         user_data = data.get('data', {})
+        print(user_data)
+        print(user_data.get('id'))
         follower_count = user_data.get('follower_count', 0)
         previous_followers = donor.get('followers', 0)
         growth = follower_count - previous_followers if previous_followers else 0
@@ -197,20 +226,24 @@ def get_videos_from_notion():
     has_more = True
     next_cursor = None
     while has_more:
-        payload = {}
-        if next_cursor:
-            payload['start_cursor'] = next_cursor
+        try:
+            payload = {}
+            if next_cursor:
+                payload['start_cursor'] = next_cursor
 
-        response = requests.post(url, headers=notion_headers, json=payload)
-        data = response.json()
+            response = requests.post(url, headers=notion_headers, json=payload)
+            data = response.json()
 
-        if response.status_code != 200:
-            raise Exception(f"Ошибка при получении данных из Notion: {data}")
+            if response.status_code != 200:
+                print(f"Ошибка при получении данных из Notion: {data}")
 
-        all_videos.extend(data.get('results', []))
+            all_videos.extend(data.get('results', []))
 
-        # Обновляем переменные для пагинации        has_more = data.get('has_more', False)
-        next_cursor = data.get('next_cursor')
+            # Обновляем переменные для пагинации
+            has_more = data.get('has_more', False)
+            next_cursor = data.get('next_cursor')
+        except:
+            pass
 
     return all_videos
 
@@ -233,23 +266,29 @@ def clean_old_reels():
 
                 if created_at < utc.localize(threshold_date):
                     if created_at < utc.localize(threshold_date) and (status == 'N/A' and stage is None):
-                        # Удаляем Reel                        page_id = reel['id']
+                        # Удаляем Reel
+                        page_id = reel['id']
+                        print('Удаление')
                         delete_url = f"https://api.notion.com/v1/pages/{page_id}"
-                        response = requests.patch(delete_url, headers=notion_headers)
+                        data = {"archived": True}
+                        response = requests.patch(delete_url, headers=notion_headers, json=data)
                         if response.status_code == 200:
                             print(f"Reel {page_id} успешно удален.")
                         else:
                             print(f"Ошибка при удалении Reel {page_id}: {response.text}")
         except Exception as e:
-            print(e)
+            print(traceback.format_exc())
 
 
 # Основная функция
 def main():
     donors = get_donors_from_notion()
+
     for donor in donors:
         try:
+
             username = donor['username']
+            print(username)
 
             reels = get_reels_from_donor(username)
 
@@ -262,47 +301,16 @@ def main():
             else:
                 average_views = 0
             for reel in reels:
-                upsert_reel_in_notion(reel, average_views)
+                try:
+                    upsert_reel_in_notion(reel, average_views)
+                except:
+                    print(traceback.format_exc())
 
             update_donor_info(donor, round(average_views))
         except:
-            pass
+            print(traceback.format_exc())
 
     clean_old_reels()
-
-
-def archive_all_videos_from_notion():
-    while True:
-        # URL для запроса всех записей из базы данных
-        url = f"https://api.notion.com/v1/databases/{NOTION_REELS_DB_ID}/query"
-
-        # Получаем все записи из таблицы
-        response = requests.post(url, headers=notion_headers)
-        data = response.json()
-        results = data.get('results', [])
-
-        if not results:
-            print("В базе данных нет записей для архивации.")
-            break
-            return
-
-        # Архивируем каждую запись
-        for result in results:
-            page_id = result['id']
-            archive_url = f"https://api.notion.com/v1/pages/{page_id}"
-            data = {
-                "archived": True  # Архивируем запись
-            }
-            response = requests.patch(archive_url, headers=notion_headers, json=data)
-            if response.status_code == 200:
-                print(f"Запись {page_id} успешно заархивирована.")
-            else:
-                break
-                print(f"Ошибка при архивации записи {page_id}: {response.text}")
-
-
-# Пример использования функции
-# archive_all_videos_from_notion()
 
 
 if __name__ == "__main__":

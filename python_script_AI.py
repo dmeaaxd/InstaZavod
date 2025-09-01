@@ -1,4 +1,6 @@
+import os
 import time
+import traceback
 from datetime import datetime
 
 import dotenv
@@ -6,7 +8,6 @@ import ffmpeg
 import requests
 from aiogram import Bot
 from openai import OpenAI
-import os
 
 dotenv.load_dotenv()
 
@@ -54,10 +55,26 @@ def get_videos_from_notion():
 
     # Добавляем фильтр для отбора записей с установленным чекбоксом "Одобрено"
     filter_conditions = {
-        "property": "Одобрено",  # Имя поля чекбокса в базе данных Notion
-        "checkbox": {
-            "equals": True  # Отбираем записи, где "Одобрено" = True
-        }
+        "and": [
+            {
+                "property": "Статус",  # Поле статус (Status)
+                "status": {
+                    "equals": "N/A"
+                }
+            },
+            {
+                "property": "Этап",  # Поле этап (Select)
+                "select": {
+                    "is_empty": True
+                }
+            },
+            {
+                "property": "Одобрено",  # Имя поля чекбокса в базе данных Notion
+                "checkbox": {
+                    "equals": True  # Отбираем записи, где "Одобрено" = True
+                }
+            }
+        ]
     }
 
     while has_more:
@@ -92,7 +109,10 @@ def download_video(video_url):
     video_data = response.json()
     if video_data['error'] is True:
         if ('limit' or 'token' in video_data['message']) or fatal_errors_count >= 20:
-            bot.send_message(663679771,
+            bot.send_message(1234567,
+                             'Лимит использования rapid api закончился или произошла критическая ошибка api\n\n' +
+                             video_data['message'])
+            bot.send_message(1234567,
                              'Лимит использования rapid api закончился или произошла критическая ошибка api\n\n' +
                              video_data['message'])
             return None
@@ -150,7 +170,20 @@ def translate_text_with_openai(text):
         "messages": [
             {
                 "role": "user",
-                "content": f"Переведи следующий текст на русский: {text}"
+                "content": f"""Переведи следующий текст на русский, соблюдая эти правила:
+                * Сохрани разговорный стиль и энергию оригинала. Используй живой, современный русский язык.
+                * Адаптируй идиомы и разговорные выражения к русскоязычным аналогам, не переводи их дословно.
+                * Используй короткие, простые предложения. Избегай длинных, сложных конструкций.
+                * Сохраняй эмоциональные восклицания и междометия, адаптируя их к русскому языку (например, "Wow!" -> "Вау!" или "Ничего себе!").
+                * Используй обращение на "ты", если в оригинале есть неформальное обращение к читателю.
+                * Сохраняй структуру абзацев оригинала.
+                * Адаптируй числа и единицы измерения к более привычным для русскоязычной аудитории, если это уместно.
+                * Если встречаются специфические термины или названия (например, названия приложений или функций), оставляй их на английском, но давай пояснение в скобках при первом упоминании.
+                * Старайся передать настроение и интонацию автора, используя соответствующие частицы и междометия в русском языке.
+                * Избегай буквальных переводов фраз, которые звучат неестественно на русском. Вместо этого используй эквивалентные по смыслу разговорные выражения.
+                * Верни в ответ исключительно перевод текста. Без вступительных фраз по типу "Вот перевод текста" и т.д
+                Текст для перевода:
+                {text}"""
             }
         ]
     }
@@ -160,7 +193,7 @@ def translate_text_with_openai(text):
 
 
 # Добавление транскрибации и уникализированного текста в Notion
-def update_notion_properties(page_id, stage, status):
+def update_notion_properties(page_id, stage, status, new_scenario):
     url = f"https://api.notion.com/v1/pages/{page_id}"
 
     current_date = datetime.now().strftime("%Y-%m-%d")
@@ -187,6 +220,15 @@ def update_notion_properties(page_id, stage, status):
                     "status": {
                         "name": status
                     }
+                },
+                "Готовый сценарий": {
+                    "rich_text": [
+                        {
+                            "text": {
+                                "content": new_scenario
+                            }
+                        }
+                    ]
                 }
             }
         }
@@ -199,7 +241,7 @@ def update_notion_properties(page_id, stage, status):
         raise Exception(f"Error updating Notion page properties: {response.json()}")
 
 
-def add_notion_blocks(page_id, unique_text, headers_text, transcribe):
+def add_notion_blocks(page_id, headers_text, transcribe):
     url = f"https://api.notion.com/v1/blocks/{page_id}/children"
 
     data = {
@@ -227,34 +269,6 @@ def add_notion_blocks(page_id, unique_text, headers_text, transcribe):
                             "type": "text",
                             "text": {
                                 "content": transcribe
-                            }
-                        }
-                    ]
-                }
-            },
-            {
-                "object": "block",
-                "type": "heading_3",
-                "heading_3": {
-                    "rich_text": [
-                        {
-                            "type": "text",
-                            "text": {
-                                "content": "Новый сценарий:"
-                            }
-                        }
-                    ]
-                }
-            },
-            {
-                "object": "block",
-                "type": "paragraph",
-                "paragraph": {
-                    "rich_text": [
-                        {
-                            "type": "text",
-                            "text": {
-                                "content": unique_text
                             }
                         }
                     ]
@@ -392,18 +406,27 @@ def process_videos():
     global fatal_errors_count
     while True:
         videos = get_videos_from_notion()
+        print(len(videos))
         for video in videos:
             try:
                 approved = video["properties"]["Одобрено"]["checkbox"]
                 status = video["properties"]["Статус"]['status']['name']
                 stage = video["properties"]["Этап"]['select']
-                if approved and status == 'N/A' and (stage is None or stage['name'] == 'AI'):
-                    print(video)
+                print(video["properties"]["Источник"])
+                source = video["properties"]["Источник"]['select']
+
+                if source:
+                    source_name = 'INSTA'
+                else:
+                    source_name = video["properties"]["Источник"]['select']
+
+                if approved and status == 'N/A' and (stage is None or stage['name'] == 'AI') and source_name != 'YOUTUBE':
+
                     page_id = video["id"]
                     video_url = video["properties"]["Референс"]["url"]
 
                     # Обновляем статус на AI
-                    update_notion_properties(page_id, "AI", None)
+                    update_notion_properties(page_id, "AI", None, None)
 
                     # Скачиваем видео
 
@@ -455,12 +478,12 @@ def process_videos():
                     headers_text = get_headers_from_assistant(unique_text)
 
                     # Обновляем свойства страницы в Notion
-                    update_notion_properties(page_id, "СЦЕНАРИЙ", "ВЗЯТЬ В РАБОТУ")
+                    update_notion_properties(page_id, "СЦЕНАРИЙ", "ВЗЯТЬ В РАБОТУ", unique_text)
 
                     # Добавляем блоки с текстом в Notion
-                    add_notion_blocks(page_id, unique_text, headers_text, transcript_orig)
+                    add_notion_blocks(page_id, headers_text, transcript_orig)
             except Exception as e:
-                print(e)
+                print(traceback.format_exc())
 
         time.sleep(60)
 
