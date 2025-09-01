@@ -109,10 +109,7 @@ def download_video(video_url):
     video_data = response.json()
     if video_data['error'] is True:
         if ('limit' or 'token' in video_data['message']) or fatal_errors_count >= 20:
-            bot.send_message(1234567,
-                             'Лимит использования rapid api закончился или произошла критическая ошибка api\n\n' +
-                             video_data['message'])
-            bot.send_message(1234567,
+            bot.send_message(414054050,
                              'Лимит использования rapid api закончился или произошла критическая ошибка api\n\n' +
                              video_data['message'])
             return None
