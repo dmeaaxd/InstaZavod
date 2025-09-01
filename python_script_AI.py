@@ -403,27 +403,18 @@ def process_videos():
     global fatal_errors_count
     while True:
         videos = get_videos_from_notion()
-        print(len(videos))
         for video in videos:
             try:
                 approved = video["properties"]["Одобрено"]["checkbox"]
                 status = video["properties"]["Статус"]['status']['name']
                 stage = video["properties"]["Этап"]['select']
-                print(video["properties"]["Источник"])
-                source = video["properties"]["Источник"]['select']
-
-                if source:
-                    source_name = 'INSTA'
-                else:
-                    source_name = video["properties"]["Источник"]['select']
-
-                if approved and status == 'N/A' and (stage is None or stage['name'] == 'AI') and source_name != 'YOUTUBE':
-
+                if approved and status == 'N/A' and (stage is None or stage['name'] == 'AI'):
+                    print(video)
                     page_id = video["id"]
                     video_url = video["properties"]["Референс"]["url"]
 
                     # Обновляем статус на AI
-                    update_notion_properties(page_id, "AI", None, None)
+                    update_notion_properties(page_id, "AI", None)
 
                     # Скачиваем видео
 
@@ -475,15 +466,14 @@ def process_videos():
                     headers_text = get_headers_from_assistant(unique_text)
 
                     # Обновляем свойства страницы в Notion
-                    update_notion_properties(page_id, "СЦЕНАРИЙ", "ВЗЯТЬ В РАБОТУ", unique_text)
+                    update_notion_properties(page_id, "СЦЕНАРИЙ", "ВЗЯТЬ В РАБОТУ")
 
                     # Добавляем блоки с текстом в Notion
-                    add_notion_blocks(page_id, headers_text, transcript_orig)
+                    add_notion_blocks(page_id, unique_text, headers_text, transcript_orig)
             except Exception as e:
-                print(traceback.format_exc())
+                print(e)
 
         time.sleep(60)
-
 
 if __name__ == "__main__":
     process_videos()
