@@ -173,7 +173,6 @@ def construct_reel_properties(reel_data, average_views):
         "Комменты": {"number": comment_count},
         "Репосты": {"number": reshare_count},
         "ER": {"number": ER},
-        "КФ": {"number": KF},
         "ID": {"number": int(reel_id)},
     }
     return properties
