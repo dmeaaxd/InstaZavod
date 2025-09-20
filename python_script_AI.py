@@ -1,3 +1,4 @@
+import asyncio
 import os
 import time
 import traceback
@@ -109,12 +110,8 @@ def download_video(video_url):
     video_data = response.json()
     if video_data['error'] is True:
         if ('limit' or 'token' in video_data['message']) or fatal_errors_count >= 20:
-            bot.send_message(414054050,
-                             'Лимит использования rapid api закончился или произошла критическая ошибка api\n\n' +
-                             video_data['message'])
-            bot.send_message(663679771,
-                             'Лимит использования rapid api закончился или произошла критическая ошибка api\n\n' +
-                             video_data['message'])
+            asyncio.run(bot.send_message(414054050, 'Лимит использования rapid api закончился или произошла критическая ошибка api'))
+            asyncio.run(bot.send_message(663679771, 'Лимит использования rapid api закончился или произошла критическая ошибка api'))
             return None
     video_response = requests.get(video_data['medias'][0]['url'])
     with open("downloaded_video.mp4", 'wb') as f:

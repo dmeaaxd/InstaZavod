@@ -1,3 +1,4 @@
+import asyncio
 import os
 import traceback
 from datetime import datetime, timedelta
@@ -5,8 +6,11 @@ from datetime import datetime, timedelta
 import dotenv
 import pytz
 import requests
+from aiogram import Bot
 
 dotenv.load_dotenv()
+
+bot = Bot(token=os.getenv("TELEGRAM_BOT_TOKEN"))
 
 # Конфигурационные параметры
 NOTION_TOKEN = os.getenv("NOTION_TOKEN")
@@ -298,14 +302,26 @@ def main():
                 average_views = total_views / len(reels_for_average)
             else:
                 average_views = 0
+
             for reel in reels:
+
                 try:
                     upsert_reel_in_notion(reel, average_views)
-                except:
+                except Exception:
+                    asyncio.run(bot.send_message(414054050, 'Ошибка обновления инфо о рилсах!'))
+                    asyncio.run(bot.send_message(663679771, 'Ошибка обновления инфо о рилсах!'))
                     print(traceback.format_exc())
 
-            update_donor_info(donor, round(average_views))
-        except:
+            try:
+                update_donor_info(donor, round(average_views))
+            except Exception:
+                asyncio.run(bot.send_message(414054050, 'Ошибка обновления инфо о донарах!'))
+                asyncio.run(bot.send_message(663679771, 'Ошибка обновления инфо о донарах!'))
+                print(traceback.format_exc())
+
+        except Exception:
+            asyncio.run(bot.send_message(414054050, 'Клиент что-то поменял. Ошибка!'))
+            asyncio.run(bot.send_message(663679771, 'Клиент что-то поменял. Ошибка!'))
             print(traceback.format_exc())
 
     clean_old_reels()
