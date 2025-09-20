@@ -325,6 +325,11 @@ def add_notion_blocks(page_id, unique_text, headers_text, transcribe):
 
     if response.status_code == 200:
         print("Successfully added blocks to Notion page.")
+        print(transcribe+'\n')
+        print(unique_text+'\n')
+        print(headers_text+'\n')
+
+
     else:
         raise Exception(f"Error adding blocks to Notion page: {response.json()}")
 
